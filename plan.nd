@@ -1,0 +1,479 @@
+# Ski Game — Project Plan
+
+## Overview
+
+A retro 2D browser-based game with two selectable modes — **Winter** (skiing) and **Summer**
+(cycling). After landing on the title/mode-select screen the player picks a theme; the core
+loop, scoring, and ambulance crash scene are shared across both.
+
+The player controls either a skier on a snow slope (Winter) or a cyclist on a summer road
+(Summer), dodging obstacles that increase in density over time. Speed ramps up continuously.
+A crash triggers a comedic ambulance scene regardless of mode. The game ships as a single
+self-contained HTML file — shareable by link or double-click on any OS.
+
+---
+
+## Game Modes
+
+### Winter Mode (original)
+The player is a skier racing down a snow-covered mountain slope.
+- Background: scrolling snow bands, pine trees on margins, ski tracks
+- Obstacles: NPC skiers (up to 12) drifting left/right
+- Powerup objects: ski ramps → airborne state, +500 pts
+- Decorations: snow-covered trees, red/blue slalom flags
+- Player: red jacket, blue trousers, white skis, poles
+
+### Summer Mode (new)
+The player is a cyclist riding down a summer road through a countryside.
+- Background: asphalt road with dashed centre line, green grass verges, leafy trees
+- Obstacles: animals crossing the road (cats, dogs, squirrels, turtles — up to 12 active)
+- Powerup objects: speed bumps → airborne state (same mechanic as ramp), +500 pts
+- Decorations: leafy trees, bushes, wildflowers, roadside posts
+- Player: cyclist in jersey + helmet, on a bicycle
+
+#### Animal obstacle types
+
+| Animal   | Width | Speed factor | Lateral behaviour              |
+|----------|-------|--------------|--------------------------------|
+| Cat      | 18px  | 0.9–1.1×     | Darts across, may pause 0.5s   |
+| Dog      | 22px  | 0.7–1.0×     | Steady cross, slight wobble    |
+| Squirrel | 12px  | 1.2–1.5×     | Erratic — reverses direction 2-4× per crossing |
+| Turtle   | 20px  | 0.3–0.5×     | Slow and steady, stays on road |
+
+Each animal type has its own pixel-art sprite drawn from rectangles (same technique as
+the skier sprites). All animals move "down" the screen (same direction as player) but
+also drift laterally. On collision the same AABB + ambulance logic fires.
+
+#### Summer background layers
+- Far layer (0.4× speed): sky gradient, distant green hills
+- Mid layer (0.6× speed): trees and bushes on grass verges
+- Near layer (1.0× speed): road surface with dashed centre-line lane markings
+
+#### Cyclist sprite states
+| State   | Description                                        |
+|---------|----------------------------------------------------|
+| forward | Upright, pedalling (two alternating frames)        |
+| left    | Lean left, turn bar                                |
+| right   | Lean right, turn bar                               |
+| air     | Airborne over speed bump, wheels off ground        |
+| crash   | Splayed off bike, bike and rider separate          |
+
+#### Speed bump (Summer equivalent of ski ramp)
+- Visual: striped yellow/black hump across road (32×14 px)
+- Mechanic identical to ski ramp — triggers 0.9s air state, +500 pts
+- Jumping over an animal in the air path: +200 style bonus (same as NPC skier)
+
+---
+
+## Mode Selection Screen
+
+Shown immediately after the title splash, before any gameplay:
+
+```
+┌────────────────────────────────────────┐
+│           CHOOSE YOUR MODE             │
+│                                        │
+│  ┌──────────────┐  ┌──────────────┐   │
+│  │   WINTER     │  │   SUMMER     │   │
+│  │   ⛷  SKI    │  │   🚴 CYCLE  │   │
+│  │              │  │              │   │
+│  │ Snow slope   │  │ Country road │   │
+│  │ dodge skiers │  │ dodge animals│   │
+│  └──────────────┘  └──────────────┘   │
+│                                        │
+│       Click / press to select          │
+└────────────────────────────────────────┘
+```
+
+- Keyboard: `1` or `W` selects Winter; `2` or `S` selects Summer
+- Mouse / touch: click either panel
+- Highlighted panel has a glowing border; hover shifts it
+- High scores stored separately per mode:
+  - Winter: `localStorage` key `ski_highscore`
+  - Summer: `localStorage` key `cycle_highscore`
+
+---
+
+## Tech Stack
+
+| Layer       | Choice                        | Reason                                              |
+|-------------|-------------------------------|-----------------------------------------------------|
+| Runtime     | Browser (HTML5)               | Zero install, works on Windows/Mac/Linux            |
+| Rendering   | HTML5 Canvas (2D API)         | Full pixel-level control, no dependencies           |
+| Language    | Vanilla JavaScript (ES2020)   | No build step, single file possible                 |
+| Art style   | 16-bit pixel art (SNES era)   | Rich colors, smooth animation, nostalgic feel       |
+| Persistence | localStorage                  | High score survives browser restarts, no backend    |
+| Packaging   | Single .html file             | Family can open it without installing anything      |
+
+No npm, no bundler, no server required. The file runs offline.
+
+---
+
+## Pixel Art Assets
+
+All sprites are drawn programmatically using Canvas pixel drawing routines or embedded as
+base64 PNG data URIs inside the HTML file so it stays self-contained.
+
+### Sprites needed — Winter
+
+| Asset                 | Frames / States                                      | Size (approx) |
+|-----------------------|------------------------------------------------------|---------------|
+| Player skier          | Idle (down), lean-left, lean-right, airborne, crash  | 24×32 px each |
+| NPC skier             | Ski-left, ski-right, idle-down                       | 24×32 px each |
+| Jump ramp             | Static (single frame)                                | 32×16 px      |
+| Snow trees            | 2–3 variants (snow-covered pines)                    | 16×32 px      |
+| Slalom flag / gate    | Single frame, red & blue variants                    | 8×24 px       |
+| Snow texture tile     | Seamless tile for scrolling background               | 32×32 px      |
+
+### Sprites needed — Summer (new)
+
+| Asset                 | Frames / States                                      | Size (approx) |
+|-----------------------|------------------------------------------------------|---------------|
+| Player cyclist        | Forward, lean-left, lean-right, airborne, crash      | 26×34 px each |
+| Cat                   | Walking (2-frame cycle) + pause                      | 18×14 px      |
+| Dog                   | Running (2-frame cycle)                              | 22×16 px      |
+| Squirrel              | Scurrying (2-frame cycle)                            | 12×12 px      |
+| Turtle                | Walking (2-frame cycle)                              | 20×14 px      |
+| Speed bump            | Static stripe, yellow/black                          | 32×14 px      |
+| Summer trees          | Leafy canopy variants (2–3 types)                    | 18×34 px      |
+| Bushes / wildflowers  | Static decorations                                   | 12×10 px      |
+| Road surface tile     | Asphalt + dashed centre-line                         | 480×80 px     |
+
+### Shared sprites (mode-independent)
+
+| Asset                 | Frames / States                                      | Size (approx) |
+|-----------------------|------------------------------------------------------|---------------|
+| Ambulance             | Drive + flashing siren light                         | 48×24 px      |
+| Hospital icon         | Static                                               | 40×35 px      |
+| HUD font              | Monospace canvas text                                | —             |
+
+### Color palettes
+
+**Winter**
+- Snow: #F0F4FF, #D8E4F0, #B8CCE4
+- Sky: #87CEEB → #4A90D9 gradient
+- Player outfit: Red jacket (#CC2200), blue trousers (#003388)
+- NPC outfit: Green jacket (#22AA44)
+- Trees: Dark green (#1A5C1A), trunk brown (#6B3A2A)
+
+**Summer**
+- Road: #555566 (asphalt), #FFDD00 (centre dashes)
+- Grass verge: #5AB552, #3D8C40
+- Sky: #87CEEB (bright blue)
+- Cyclist jersey: #FF6600 (orange), shorts: #222244
+- Cat: #888888 / #CC9900 (tabby)
+- Dog: #CC8844 (golden)
+- Squirrel: #BB6622 (russet)
+- Turtle: #447744 (shell), #336633 (body)
+
+**Shared**
+- Ambulance: White (#FFFFFF), red cross (#CC0000), siren (#FF2222 / #880000)
+
+---
+
+## Game Mechanics
+
+### Core loop (shared across both modes)
+
+1. The world scrolls downward continuously (player moves "forward").
+2. The player steers left/right to avoid obstacles and aim for jump objects.
+3. Speed increases by ~5% every 10 seconds.
+4. Score accumulates proportionally to current speed.
+5. A crash ends the run; the ambulance scene plays, then the high-score screen is shown.
+
+### Player controls
+
+| Input             | Action                                   |
+|-------------------|------------------------------------------|
+| Left arrow / A    | Lean and move left                       |
+| Right arrow / D   | Lean and move right                      |
+| No key held       | Gradual return to centre, drift forward  |
+| 1 / W             | Select Winter on mode-select screen      |
+| 2 / S             | Select Summer on mode-select screen      |
+| Escape            | Pause / unpause                          |
+
+Mobile: on-screen left/right buttons rendered below the canvas.
+
+### Obstacles
+
+**Winter — NPC skiers**
+- Spawned at top of canvas at random X positions.
+- Each NPC: speed 80–130% of player base speed + lateral drift.
+- Drift direction reverses randomly every 1–3 seconds.
+- Removed when scrolled off bottom of screen.
+- Spawn rate increases with time elapsed.
+
+**Summer — Crossing animals**
+- Same spawn/despawn system as NPC skiers.
+- Each animal has a type-specific lateral behaviour (see Animal table in Game Modes section).
+- Animals may also briefly pause mid-road (cat only) before continuing.
+- All animal types share the same AABB collision rules.
+- Spawn rate scales identically to Winter NPC skiers.
+
+### Static obstacles (Summer only)
+
+Rocks placed on the road surface — fully static, do not move laterally.
+
+| Variant  | Size      | Visual                                   |
+|----------|-----------|------------------------------------------|
+| Small    | 16×12 px  | Single rounded grey boulder              |
+| Large    | 28×18 px  | Cluster of two boulders, shadow beneath  |
+
+- Spawned the same way as ramps (pool of up to 6 active rocks).
+- Rocks do **not** trigger a jump — only collision (crash).
+- Separate spawn timer from speed bumps; approximately one rock every 6–10 s.
+- Cannot be jumped over (spawn rate keeps them sparse enough to dodge around).
+
+### Jump objects
+
+**Winter** — Ski ramp: white wedge (32×16 px)
+**Summer** — Speed bump: yellow/black striped hump (32×14 px)
+
+- Overlap triggers 0.9 s airborne state; no collision while airborne.
+- Landing: +500 pts popup.
+- Any obstacle under the jump arc: +200 style bonus per obstacle.
+
+### Collision detection
+
+- AABB at 80% sprite size (both modes).
+- On hit: crash animation, 0.5 s freeze, ambulance scene (identical in both modes).
+
+### Ambulance scene (shared)
+
+- Background fades to bluish tint.
+- Ambulance enters from right, stops, flashing siren.
+- Player sprite moves to stretcher.
+- Ambulance drives left toward hospital icon.
+- ~3 s total, then Game Over screen.
+
+### Scoring
+
+| Event                              | Points               |
+|------------------------------------|----------------------|
+| Surviving (per frame)              | gameSpeed × dt × 10  |
+| Completing a jump / speed bump     | +500                 |
+| Jumping over an obstacle           | +200 per obstacle    |
+| New high score                     | "NEW RECORD!" banner |
+
+High scores stored in `localStorage`:
+- Winter key: `ski_highscore`
+- Summer key: `cycle_highscore`
+
+---
+
+## Screen / UI Layout
+
+```
+┌─────────────────────────────────────┐
+│  SCORE: 00000    BEST: 00000        │  ← HUD bar (top)
+│                                     │
+│         [scrolling slope]           │
+│                                     │
+│   🎿 player                         │
+│                                     │
+│                                     │
+└─────────────────────────────────────┘
+│  [◀ LEFT]              [RIGHT ▶]   │  ← mobile controls (below canvas)
+└─────────────────────────────────────┘
+```
+
+Canvas resolution: **480×640 px** (3:4 portrait, scales to fill window).
+
+---
+
+## Difficulty Curve
+
+| Time elapsed | Base speed | NPC spawn interval | Notes                   |
+|--------------|------------|--------------------|-------------------------|
+| 0–30 s       | 1.0×       | Every 3 s          | Tutorial feel           |
+| 30–60 s      | 1.15×      | Every 2.5 s        | Getting busy            |
+| 60–120 s     | 1.35×      | Every 2 s          | Challenging             |
+| 120–240 s    | 1.6×       | Every 1.5 s        | Expert                  |
+| 240 s+       | 1.9×       | Every 1.2 s        | Survival mode           |
+
+---
+
+## Milestones
+
+### M1 — Project scaffold & canvas engine ✅
+- Single HTML file skeleton with Canvas setup
+- Scrolling snow background (parallax)
+- Game loop (requestAnimationFrame, delta-time based)
+- Basic keyboard + touch input handling
+
+### M2 — Player sprite & movement ✅
+- 16-bit player skier sprite (all animation states)
+- Left/right movement with lean animation
+- Boundary clamping; mobile touch buttons
+
+### M3 — Slope decoration ✅
+- Snow-covered pine trees on side margins
+- Slalom flag/gate sprites in centre zone
+- Parallax depth effect
+
+### M4 — NPC skiers ✅
+- NPC sprite set; spawn system with difficulty scaling
+- NPC movement AI (speed + lateral drift)
+- Despawn when off screen
+
+### M5 — Jumps ✅
+- Ramp sprite and placement logic
+- Jump physics (arc, 0.9 s airborne state)
+- Bonus popup animation; "jumping over NPC" detection
+
+### M6 — Collision & ambulance scene ✅
+- AABB collision detection; crash animation
+- Full ambulance scene state machine
+- Game over screen with final score
+
+### M7 — Scoring & persistence ✅
+- HUD (current score, best score)
+- localStorage high score; "NEW RECORD!" banner
+
+### M8 — Polish ✅
+- Web Audio API procedural sounds
+- Title screen with snowflakes, blinking prompt
+- Pause (Escape); responsive scaling
+
+### M9 — Mode selection screen (new)
+- MODE SELECT state inserted between TITLE and PLAYING
+- Two clickable panels (Winter / Summer) with previews
+- Keyboard shortcuts: `1`/`W` = Winter, `2`/`S` = Summer
+- Selected mode stored in `gameMode` variable
+- Separate localStorage keys per mode
+
+### M10 — Summer background & decorations (new)
+- Asphalt road surface: dark grey with scrolling yellow centre-line dashes
+- Green grass verges on left and right ~20% of canvas
+- Leafy summer trees on grass verges (parallax 0.6×)
+- Roadside bushes and wildflower patches
+- Sky: solid bright blue (#87CEEB)
+
+### M11 — Cyclist sprite (new)
+- `drawCyclist(ctx, x, y, state)` — all 5 states built from rectangles
+  - Bike frame, two wheels, handlebars
+  - Rider: helmet, jersey, shorts, pedalling legs (alternating L/R)
+  - Crash: rider and bike separate and fall apart
+- Replaces `drawSkier` when `gameMode === 'summer'`
+- Jump / airborne state: wheels leave ground, rider crouches
+
+### M12 — Animal obstacles (new)
+- `drawAnimal(ctx, x, y, type)` for cat, dog, squirrel, turtle
+- Same spawn/despawn pool system as NPC skiers (up to 12 active)
+- Type-specific lateral AI (see Animal table)
+- Cat pause mechanic: mid-crossing stop for 0.3–0.8 s
+- Squirrel reversal mechanic: randomly reverses lateral direction 2–4×
+- Speed bump object replaces ski ramp in Summer mode
+
+### M13 — Static rock obstacles (new, Summer only)
+- Small (16×12) and large (28×18) boulder variants
+- Spawn pool of up to 6 active rocks; ~1 per 6–10 s
+- Purely static — no lateral movement
+- Standard AABB collision → crash
+- Shadow ellipse drawn beneath each rock
+
+### M14 — Summer sounds & polish (new)
+- Bike bell sound for jump (short high ping via Web Audio)
+- Different crash sound (lower thud, shorter)
+- Mode label shown in HUD ("❄ WINTER" / "☀ SUMMER")
+- Game over screen shows correct mode high score
+- Title screen hero image adapts to last-selected mode
+
+---
+
+## File Structure
+
+Since this is a single-file game:
+
+```
+ski_game/
+├── plan.nd           ← this file
+├── index.html        ← the entire game (HTML + CSS + JS + sprites as base64)
+└── README.md         ← sharing instructions for family
+```
+
+All sprites will be generated programmatically using Canvas drawing commands (rectangles,
+filled paths, pixel arrays) so no external image files are needed. This keeps the game
+truly self-contained.
+
+---
+
+## Deployment & Sharing Options
+
+### Option A — Direct file share (simplest)
+1. Send `index.html` via email, WhatsApp, iMessage, etc.
+2. Recipient double-clicks the file → opens in their browser.
+3. Works on Windows, Mac, Linux — no install needed.
+
+### Option B — GitHub Pages (free hosting, shareable URL)
+1. Push the repo to GitHub.
+2. Enable GitHub Pages on the `main` branch.
+3. Share the URL: `https://<username>.github.io/ski_game/`
+4. Family clicks the link — game loads instantly.
+
+### Option C — Vercel (chosen) ✓
+1. Install the Vercel CLI: `npm i -g vercel`
+2. From the project directory, run: `vercel --prod`
+3. Vercel detects the static file and deploys instantly.
+4. Get a shareable URL: `https://ski-game-<hash>.vercel.app`
+5. Can assign a custom subdomain (e.g. `ski-game.vercel.app`) from the Vercel dashboard.
+6. Every subsequent `vercel --prod` redeploys and the same URL updates automatically.
+
+**Chosen deployment: Vercel** — no files to send, always up to date, instant redeploys.
+
+---
+
+## Open Questions / Decisions
+
+- [ ] Should there be a difficulty selector on the title screen (Easy / Normal / Hard)?
+- [ ] Should trees be passable or also act as obstacles?
+- [ ] Should there be a time-of-day visual effect (e.g., sunset after 3 minutes)?
+- [ ] Should mobile users be able to tilt their phone to steer (DeviceOrientation API)?
+- [ ] Summer mode: should rocks also appear in a "rock slide" pattern (cluster of 3) as
+      a rare high-difficulty event, or always solo?
+- [ ] Summer mode: should the squirrel be jumpable (small hitbox) for an extra style bonus?
+- [ ] Should mode selection be remembered across sessions (localStorage)?
+
+---
+
+## Risks & Mitigations
+
+| Risk                                        | Mitigation                                               |
+|---------------------------------------------|----------------------------------------------------------|
+| Pixel art too hard to draw in code          | Use simple geometric shapes; can swap for real PNGs      |
+| Performance on older devices                | Keep draw calls minimal; avoid DOM manipulation          |
+| Single file gets too large                  | Cap total size at ~300 KB (was 200 KB; summer adds ~50 KB)|
+| Family confused by controls                 | Show control overlay on first run                        |
+| Animal AI making game unbalanced            | Cap max simultaneous animals; squirrel reversal limited  |
+| Static rocks clustered into impossible wall | Enforce minimum X-gap between rocks in spawn logic       |
+| Mode select adds complexity to state machine| Treat MODE_SELECT as a distinct state; no logic leakage  |
+
+---
+
+## Definition of Done
+
+**Shared / infrastructure**
+- [ ] Game runs by opening `index.html` in Chrome/Firefox/Edge/Safari
+- [ ] Mode selection screen appears before gameplay; both modes selectable by click or key
+- [ ] Player can steer left/right; speed increases over time in both modes
+- [ ] Jump objects award +500 pts and trigger airborne state in both modes
+- [ ] Crash triggers ambulance scene (same scene for both modes)
+- [ ] High score persists across sessions, separately per mode
+- [ ] Game scales correctly on phone and desktop
+- [ ] Family can access it via a Vercel URL with no installation
+
+**Winter mode**
+- [ ] Snow slope background scrolls with parallax pine trees and flags
+- [ ] NPC skiers spawn, drift, and can be crashed into
+- [ ] Ski ramp triggers jump; style bonus when NPC is under arc
+
+**Summer mode**
+- [ ] Road background with asphalt, grass verges, leafy trees scrolls correctly
+- [ ] Cyclist sprite renders in all 5 states (forward, left, right, air, crash)
+- [ ] Cat, dog, squirrel, and turtle obstacles appear with correct behaviours
+  - [ ] Cat pauses mid-road
+  - [ ] Squirrel reverses direction mid-crossing
+  - [ ] Turtle is noticeably slower than other animals
+- [ ] Speed bump triggers jump; style bonus when animal is under arc
+- [ ] Small and large rocks appear as static obstacles; collision ends run
+- [ ] Bike bell sound on jump; distinct crash sound

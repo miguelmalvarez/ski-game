@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>SKI &amp; CYCLE GAME</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #111;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+    touch-action: none;
+    font-family: monospace;
+  }
+  #wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  #controls {
+    position: absolute;
+    bottom: 20px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 16px;
+    pointer-events: none;
+  }
+  .ctrl-btn {
+    width: 70px;
+    height: 70px;
+    background: rgba(255,255,255,0.18);
+    border: 2px solid rgba(255,255,255,0.35);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    color: white;
+    pointer-events: all;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .ctrl-btn:active { background: rgba(255,255,255,0.35); }
+</style>
+</head>
+<body>
+<div id="wrapper">
+  <canvas id="game"></canvas>
+  <div id="controls">
+    <div class="ctrl-btn" id="btnLeft">◀</div>
+    <div class="ctrl-btn" id="btnRight">▶</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const W = 480, H = 640;
+const PLAYER_Y_RATIO = 0.65;
+const PLAYER_SPEED   = 4;
+const MAX_OBSTACLES  = 12;
+const MAX_JUMPERS    = 4;   // ramps or speed bumps
+const MAX_ROCKS      = 6;
+const MAX_TREES      = 30;
+const MAX_FLAGS      = 20;
+
+// ─── Canvas setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('game');
+const ctx    = canvas.getContext('2d');
+const dpr    = window.devicePixelRatio || 1;
+
+function resizeCanvas() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const scale = Math.min(vw / W, vh / H);
+  const cssW  = Math.floor(W * scale);
+  const cssH  = Math.floor(H * scale);
+  canvas.style.width  = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const wrap = document.getElementById('wrapper');
+  wrap.style.width  = cssW + 'px';
+  wrap.style.height = cssH + 'px';
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+const keys = { left: false, right: false };
+
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') keys.left  = true;
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true;
+  if (e.key === 'Escape') togglePause();
+
+  if (state === 'MODE_SELECT') {
+    if (e.key === '1' || e.key === 'w' || e.key === 'W') chooseMode('winter');
+    if (e.key === '2' || e.key === 's' || e.key === 'S') chooseMode('summer');
+  }
+  if (state === 'TITLE')    showModeSelect();
+  if (state === 'GAMEOVER') showModeSelect();
+});
+window.addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') keys.left  = false;
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
+});
+
+// Mobile controls
+document.getElementById('btnLeft').addEventListener('touchstart',  e => { e.preventDefault(); keys.left  = true;  }, { passive: false });
+document.getElementById('btnLeft').addEventListener('touchend',    e => { e.preventDefault(); keys.left  = false; }, { passive: false });
+document.getElementById('btnRight').addEventListener('touchstart', e => { e.preventDefault(); keys.right = true;  }, { passive: false });
+document.getElementById('btnRight').addEventListener('touchend',   e => { e.preventDefault(); keys.right = false; }, { passive: false });
+
+// Canvas click for mode select
+canvas.addEventListener('click', e => {
+  if (state === 'TITLE')    { showModeSelect(); return; }
+  if (state === 'GAMEOVER') { showModeSelect(); return; }
+  if (state !== 'MODE_SELECT') return;
+  const rect  = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const cx    = (e.clientX - rect.left) * scaleX;
+  if (cx < W / 2) chooseMode('winter');
+  else             chooseMode('summer');
+});
+canvas.addEventListener('touchstart', e => {
+  if (state === 'TITLE')    { showModeSelect(); return; }
+  if (state === 'GAMEOVER') { showModeSelect(); return; }
+  if (state !== 'MODE_SELECT') return;
+  e.preventDefault();
+  const rect  = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const cx    = (e.touches[0].clientX - rect.left) * scaleX;
+  if (cx < W / 2) chooseMode('winter');
+  else             chooseMode('summer');
+}, { passive: false });
+
+// ─── Audio ───────────────────────────────────────────────────────────────────
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
+  return audioCtx;
+}
+function playTone(freq, type, dur, gain=0.3, startFreq=null) {
+  const ac = getAudio(); if (!ac) return;
+  const osc = ac.createOscillator();
+  const gn  = ac.createGain();
+  osc.connect(gn); gn.connect(ac.destination);
+  osc.type = type;
+  if (startFreq) {
+    osc.frequency.setValueAtTime(startFreq, ac.currentTime);
+    osc.frequency.linearRampToValueAtTime(freq, ac.currentTime + dur);
+  } else {
+    osc.frequency.setValueAtTime(freq, ac.currentTime);
+  }
+  gn.gain.setValueAtTime(gain, ac.currentTime);
+  gn.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+  osc.start(); osc.stop(ac.currentTime + dur);
+}
+// Winter sounds
+function playJumpWinter()  { playTone(600, 'sine',    0.3, 0.2, 200); }
+function playCrashWinter() { playTone(80,  'sawtooth', 0.6, 0.4); }
+function playLandWinter()  { playTone(300, 'sine',    0.2, 0.15, 500); }
+// Summer sounds
+function playJumpSummer() {
+  // Bike bell: short high ping
+  playTone(1800, 'sine', 0.08, 0.3);
+  setTimeout(() => playTone(1600, 'sine', 0.06, 0.15), 90);
+}
+function playCrashSummer() { playTone(120, 'sawtooth', 0.4, 0.35); }
+function playLandSummer()  { playTone(500, 'sine',    0.15, 0.1, 700); }
+
+function playJump()  { gameMode === 'winter' ? playJumpWinter()  : playJumpSummer();  }
+function playCrash() { gameMode === 'winter' ? playCrashWinter() : playCrashSummer(); }
+function playLand()  { gameMode === 'winter' ? playLandWinter()  : playLandSummer();  }
+
+function playSiren() {
+  const ac = getAudio(); if (!ac) return;
+  [0, 0.4, 0.8].forEach(delay => {
+    setTimeout(() => playTone(800, 'square', 0.35, 0.12), delay * 1000);
+    setTimeout(() => playTone(600, 'square', 0.35, 0.12), (delay + 0.2) * 1000);
+  });
+}
+
+// ─── Game state ───────────────────────────────────────────────────────────────
+let state    = 'TITLE';  // TITLE | MODE_SELECT | PLAYING | PAUSED | AMBULANCE | GAMEOVER
+let gameMode = 'winter'; // 'winter' | 'summer'
+
+let scrollY     = 0;
+let gameSpeed   = 3;
+let elapsed     = 0;
+let score       = 0;
+let newRecord   = false;
+let lastTime    = 0;
+let freezeTimer = 0;
+let leanTimer   = 0;
+let leanDir     = 0;
+
+// High scores per mode
+const LS_KEYS = { winter: 'ski_highscore', summer: 'cycle_highscore' };
+function getHS()      { return parseInt(localStorage.getItem(LS_KEYS[gameMode])) || 0; }
+function saveHS(val)  { localStorage.setItem(LS_KEYS[gameMode], val); }
+
+let highScore = 0;
+
+// Player
+let player = {};
+// Obstacles (NPCs / animals)
+let obstacles  = [];
+let obsTimer   = 0;
+// Jumpers (ramps / speed bumps)
+let jumpers    = [];
+let jumpTimer  = 0;
+// Rocks (summer only)
+let rocks      = [];
+let rockTimer  = 0;
+// Decorations
+let decoLeft = [], decoRight = [], flagPoles = [];
+// Popups
+let popups = [];
+// Ambulance
+let ambTimer = 0, ambX = 0, ambFlash = false, ambFlashTimer = 0, showHospital = false;
+// Mode select hover
+let modeHover = null; // 'winter' | 'summer' | null
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function randRange(a, b) { return a + Math.random() * (b - a); }
+function randInt(a, b)   { return Math.floor(randRange(a, b + 1)); }
+function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+// ─── State transitions ───────────────────────────────────────────────────────
+function showModeSelect() { state = 'MODE_SELECT'; }
+
+function chooseMode(mode) {
+  gameMode  = mode;
+  highScore = getHS();
+  resetGame();
+  state = 'PLAYING';
+}
+
+function togglePause() {
+  if (state === 'PLAYING')  { state = 'PAUSED'; }
+  else if (state === 'PAUSED') { state = 'PLAYING'; lastTime = performance.now(); }
+}
+
+// ─── Game reset ───────────────────────────────────────────────────────────────
+function initPlayer() {
+  player = { x: W / 2, y: H * PLAYER_Y_RATIO, w: 24, h: 30,
+             airTime: 0, airY: 0, state: 'down' };
+}
+
+function resetGame() {
+  scrollY     = 0;
+  gameSpeed   = 3;
+  elapsed     = 0;
+  score       = 0;
+  newRecord   = false;
+  freezeTimer = 0;
+  leanTimer   = 0;
+  leanDir     = 0;
+  obstacles   = [];  obsTimer  = 0;
+  jumpers     = [];  jumpTimer = 0;
+  rocks       = [];  rockTimer = 0;
+  popups      = [];
+  ambTimer    = 0;  ambX = W + 60;
+  ambFlash    = false; ambFlashTimer = 0; showHospital = false;
+  initDeco();
+  initPlayer();
+}
+
+// ─── Decorations ─────────────────────────────────────────────────────────────
+function mkDecoLeft(y) {
+  return { x: randRange(10, W * 0.17), y, size: randRange(12, 22) };
+}
+function mkDecoRight(y) {
+  return { x: randRange(W * 0.83, W - 10), y, size: randRange(12, 22) };
+}
+function mkFlag(y, color) {
+  return { x: randRange(W * 0.3, W * 0.7), y, color };
+}
+
+function initDeco() {
+  decoLeft  = [];
+  decoRight = [];
+  flagPoles = [];
+  for (let i = 0; i < MAX_TREES / 2; i++) {
+    decoLeft.push(mkDecoLeft(randRange(-H, H * 2)));
+    decoRight.push(mkDecoRight(randRange(-H, H * 2)));
+  }
+  for (let i = 0; i < MAX_FLAGS; i++) {
+    flagPoles.push(mkFlag(randRange(-H, H * 2), i % 2 === 0 ? 'red' : 'blue'));
+  }
+}
+
+function updateDeco(dy) {
+  const s06 = dy * 0.6, s10 = dy;
+  function scroll(pool, spd, recycleL, recycleR, recycleFlag) {
+    for (const d of pool) d.y += spd;
+    for (const d of pool) {
+      if (d.y > H + 50) {
+        d.y = randRange(-H, -30);
+        if (recycleL)    { d.x = randRange(10, W * 0.17);   d.size = randRange(12, 22); }
+        if (recycleR)    { d.x = randRange(W * 0.83, W - 10); d.size = randRange(12, 22); }
+        if (recycleFlag) { d.x = randRange(W * 0.3, W * 0.7); }
+      }
+    }
+  }
+  scroll(decoLeft,  s06, true,  false, false);
+  scroll(decoRight, s06, false, true,  false);
+  scroll(flagPoles, s10, false, false, true);
+}
+
+// ─── Pixel-art helpers ───────────────────────────────────────────────────────
+function pr(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(Math.round(x), Math.round(y), w, h);
+}
+
+// ─── WINTER sprites ──────────────────────────────────────────────────────────
+function drawSkier(cx, cy, skierState, jacket='#cc2222') {
+  const x = cx - 12, y = cy;
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath(); ctx.ellipse(cx, cy + 31, 10, 4, 0, 0, Math.PI * 2); ctx.fill();
+
+  if (skierState === 'crash') {
+    pr(x+2,  y+8,  20, 6,  jacket);
+    pr(x+6,  y+4,  8,  8,  '#f4c090');
+    pr(x+6,  y+2,  8,  5,  '#333388');
+    pr(x,    y+14, 5,  8,  '#2244aa');
+    pr(x+19, y+14, 5,  8,  '#2244aa');
+    pr(x-2,  y+22, 8,  3,  '#eee');
+    pr(x+18, y+18, 8,  3,  '#eee');
+    pr(x,    y+6,  3,  10, '#8B4513');
+    pr(x+21, y+6,  3,  10, '#8B4513');
+    return;
+  }
+  let lx = 0;
+  if (skierState === 'left')  lx = -2;
+  if (skierState === 'right') lx =  2;
+
+  pr(x+1+lx, y+10, 2, 16, '#8B4513');
+  pr(x+21+lx,y+10, 2, 16, '#8B4513');
+  pr(x-1+lx, y+25, 5, 2,  '#888');
+  pr(x+22+lx,y+25, 5, 2,  '#888');
+
+  const ang = skierState === 'left' ? -2 : skierState === 'right' ? 2 : 0;
+  ctx.save(); ctx.translate(cx+lx, cy+28); ctx.rotate(ang * Math.PI/180);
+  pr(-14,-2,28,4,'#eeeeee'); ctx.restore();
+
+  pr(x+4+lx,  y+18, 5, 12, '#2244aa');
+  pr(x+15+lx, y+18, 5, 12, '#2244aa');
+  pr(x+3+lx,  y+9,  18, 12, jacket);
+  pr(x+1+lx,  y+10, 4, 8,  jacket);
+  pr(x+19+lx, y+10, 4, 8,  jacket);
+  pr(x+6+lx,  y+3,  12, 8,  '#f4c090');
+  pr(x+6+lx,  y,    12, 5,  '#333388');
+  pr(x+6+lx,  y+4,  5,  3,  '#ffdd00');
+  pr(x+13+lx, y+4,  5,  3,  '#ffdd00');
+
+  if (skierState === 'air') {
+    const t = Date.now() / 100;
+    for (let i = 0; i < 5; i++) {
+      pr(cx + Math.sin(t+i*1.2)*14, cy + 10 + Math.cos(t+i*0.9)*8, 3, 3,
+         `hsl(${i*60},100%,80%)`);
+    }
+  }
+}
+
+function drawNPCSkier(cx, cy, driftDir) {
+  drawSkier(cx, cy, driftDir < 0 ? 'left' : driftDir > 0 ? 'right' : 'down', '#22aa44');
+}
+
+function drawSnowTree(x, y, size) {
+  pr(x-3,         y+size,       6,          size*0.5, '#8B4513');
+  pr(x-size,      y+size*0.4,   size*2,     size*0.6, '#1a6e1a');
+  pr(x-size*0.8,  y+size*0.15,  size*1.6,   size*0.4, '#228b22');
+  pr(x-size*0.55, y,            size*1.1,   size*0.3, '#2daa2d');
+  pr(x-size*0.4,  y-size*0.05,  size*0.8,   size*0.18,'#eef');
+}
+
+function drawSummerTree(x, y, size) {
+  pr(x-3,         y+size,       6,        size*0.5,  '#7B5B2A');
+  pr(x-size,      y+size*0.4,   size*2,   size*0.7,  '#2d6e1a');
+  pr(x-size*0.8,  y+size*0.1,   size*1.6, size*0.45, '#3a8c22');
+  pr(x-size*0.5,  y-size*0.1,   size,     size*0.35, '#4aaa2d');
+}
+
+function drawFlag(x, y, color) {
+  pr(x-1, y-20, 2, 24, '#aaa');
+  pr(x+1, y-20, 12, 8, color);
+}
+
+// ─── SUMMER decorations ───────────────────────────────────────────────────────
+function drawBush(x, y, size) {
+  pr(x-size,    y, size*2,   size*0.7, '#3a8c22');
+  pr(x-size*0.6,y-size*0.4, size*1.2, size*0.5, '#4aaa2d');
+}
+
+// ─── Ramp / Speed bump ───────────────────────────────────────────────────────
+function drawRamp(x, y) {
+  ctx.fillStyle = '#e8f0ff';
+  ctx.beginPath();
+  ctx.moveTo(x-16, y+8); ctx.lineTo(x+16, y+8); ctx.lineTo(x+16, y-8);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#bbd'; ctx.lineWidth = 1; ctx.stroke();
+  pr(x-14, y+4, 28, 2, 'rgba(255,255,255,0.7)');
+}
+
+function drawSpeedBump(x, y) {
+  // Striped yellow/black hump
+  const bw = 32, bh = 14;
+  ctx.fillStyle = '#555';
+  ctx.beginPath();
+  ctx.ellipse(x, y, bw/2, bh/2, 0, Math.PI, 0);
+  ctx.fill();
+  const stripes = 5;
+  const sw = bw / stripes;
+  for (let i = 0; i < stripes; i++) {
+    if (i % 2 === 0) {
+      ctx.fillStyle = '#FFD700';
+      ctx.beginPath();
+      ctx.ellipse(x - bw/2 + sw*i + sw/2, y, sw/2, bh/2 - 1, 0, Math.PI, 0);
+      ctx.fill();
+    }
+  }
+  // highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(x, y+2, bw/2-4, 3, 0, Math.PI, 0);
+  ctx.fill();
+}
+
+// ─── Rock sprites (Summer only) ───────────────────────────────────────────────
+function drawRock(x, y, large) {
+  const w = large ? 28 : 16, h = large ? 18 : 12;
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath(); ctx.ellipse(x, y + h*0.6, w*0.55, h*0.25, 0, 0, Math.PI*2); ctx.fill();
+  // Main boulder
+  ctx.fillStyle = '#888';
+  ctx.beginPath();
+  ctx.moveTo(x - w*0.5, y + h*0.5);
+  ctx.quadraticCurveTo(x - w*0.5, y - h*0.3, x, y - h*0.5);
+  ctx.quadraticCurveTo(x + w*0.5, y - h*0.3, x + w*0.5, y + h*0.5);
+  ctx.closePath(); ctx.fill();
+  // Highlight
+  ctx.fillStyle = '#aaa';
+  ctx.beginPath();
+  ctx.ellipse(x - w*0.1, y - h*0.1, w*0.2, h*0.2, -0.4, 0, Math.PI*2); ctx.fill();
+  // Second boulder (large variant)
+  if (large) {
+    ctx.fillStyle = '#777';
+    ctx.beginPath();
+    ctx.moveTo(x + w*0.2, y + h*0.5);
+    ctx.quadraticCurveTo(x + w*0.2, y, x + w*0.5, y - h*0.1);
+    ctx.quadraticCurveTo(x + w*0.8, y, x + w*0.8, y + h*0.5);
+    ctx.closePath(); ctx.fill();
+  }
+}
+
+// ─── Ambulance & hospital ─────────────────────────────────────────────────────
+function drawAmbulance(x, y, flash) {
+  const aw = 48, ah = 24;
+  pr(x, y, aw, ah, '#ffffff');
+  pr(x, y+8, aw, 5, '#cc2222');
+  pr(x+4, y+4, 6, 4, '#cc2222');
+  pr(x+5, y+3, 4, 6, '#cc2222');
+  ctx.fillStyle = '#333';
+  ctx.beginPath(); ctx.arc(x+10, y+ah, 5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x+36, y+ah, 5, 0, Math.PI*2); ctx.fill();
+  pr(x+34, y+2, 10, 10, '#aaddff');
+  pr(x+18, y-5, 12, 5, flash ? '#ff2222' : '#880000');
+  if (flash) {
+    ctx.fillStyle = 'rgba(255,80,80,0.3)';
+    ctx.beginPath(); ctx.arc(x+24, y-3, 12, 0, Math.PI*2); ctx.fill();
+  }
+}
+
+function drawHospital(x, y) {
+  pr(x, y, 40, 35, '#eee');
+  pr(x+14, y-10, 12, 12, '#eee');
+  pr(x+14, y+6,  12, 5,  '#cc2222');
+  pr(x+17, y+3,  6,  11, '#cc2222');
+  pr(x+4,  y+5,  8,  8,  '#aaddff');
+  pr(x+28, y+5,  8,  8,  '#aaddff');
+  pr(x+4,  y+20, 8,  8,  '#aaddff');
+  pr(x+28, y+20, 8,  8,  '#aaddff');
+}
+
+// ─── CYCLIST sprite ───────────────────────────────────────────────────────────
+function drawCyclist(cx, cy, cyclistState) {
+  const x = cx - 13, y = cy;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath(); ctx.ellipse(cx, cy+33, 12, 4, 0, 0, Math.PI*2); ctx.fill();
+
+  if (cyclistState === 'crash') {
+    // Rider splayed
+    pr(x+2,  y+6,  18, 6,  '#FF6600');  // jersey
+    pr(x+5,  y+2,  9,  7,  '#f4c090');  // head
+    pr(x+5,  y,    9,  4,  '#ff3300');  // helmet
+    pr(x-2,  y+12, 6,  8,  '#222244');  // leg L
+    pr(x+18, y+12, 6,  8,  '#222244');  // leg R
+    // Bike parts scattered
+    pr(x-4,  y+20, 30, 3,  '#555');     // frame
+    ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x-2,  y+24, 7, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x+26, y+24, 7, 0, Math.PI*2); ctx.stroke();
+    return;
+  }
+
+  let lx = 0;
+  if (cyclistState === 'left')  lx = -2;
+  if (cyclistState === 'right') lx =  2;
+
+  // Animate pedal legs
+  const t = Date.now() / 150;
+  const legOff = Math.sin(t) * 5;
+
+  // Bike frame
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx+lx - 10, cy+20);
+  ctx.lineTo(cx+lx,      cy+12);
+  ctx.lineTo(cx+lx + 10, cy+20);
+  ctx.moveTo(cx+lx,      cy+12);
+  ctx.lineTo(cx+lx,      cy+20);
+  ctx.stroke();
+
+  // Wheels
+  ctx.strokeStyle = '#444'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx+lx-10, cy+20, 9, 0, Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx+lx+10, cy+20, 9, 0, Math.PI*2); ctx.stroke();
+  // Wheel spokes
+  ctx.strokeStyle = '#777'; ctx.lineWidth = 1;
+  for (let s = 0; s < 4; s++) {
+    const a = (t + s * Math.PI/2);
+    const wx1 = cx+lx-10, wy1 = cy+20;
+    ctx.beginPath();
+    ctx.moveTo(wx1 + Math.cos(a)*9, wy1 + Math.sin(a)*9);
+    ctx.lineTo(wx1 - Math.cos(a)*9, wy1 - Math.sin(a)*9);
+    ctx.stroke();
+    const wx2 = cx+lx+10, wy2 = cy+20;
+    ctx.beginPath();
+    ctx.moveTo(wx2 + Math.cos(a)*9, wy2 + Math.sin(a)*9);
+    ctx.lineTo(wx2 - Math.cos(a)*9, wy2 - Math.sin(a)*9);
+    ctx.stroke();
+  }
+
+  // Handlebars
+  pr(cx+lx+6,  cy+8,  8, 2, '#555');
+  pr(cx+lx+13, cy+8,  2, 5, '#555');
+
+  // Pedals
+  pr(cx+lx-3,  cy+18+legOff,  6, 4, '#222');
+  pr(cx+lx-3,  cy+18-legOff,  6, 4, '#222');
+
+  // Legs
+  pr(x+4+lx,  y+12+legOff, 5, 10, '#222244');
+  pr(x+10+lx, y+12-legOff, 5, 10, '#222244');
+
+  // Body / jersey
+  pr(x+4+lx,  y+6, 16, 10, '#FF6600');
+  // Arm
+  pr(x+16+lx, y+7,  5, 6,  '#FF6600');
+
+  // Head
+  pr(x+5+lx,  y+1, 10, 7, '#f4c090');
+  // Helmet
+  pr(x+4+lx,  y-1, 12, 5, '#ff3300');
+  pr(x+5+lx,  y+3,  3, 2, '#ffdd00'); // visor
+
+  if (cyclistState === 'air') {
+    const ta = Date.now() / 100;
+    for (let i = 0; i < 5; i++) {
+      pr(cx + Math.sin(ta+i*1.2)*16, cy + 8 + Math.cos(ta+i*0.9)*8, 3, 3,
+         `hsl(${i*60+30},100%,75%)`);
+    }
+  }
+}
+
+// ─── Animal sprites ───────────────────────────────────────────────────────────
+function drawAnimal(cx, cy, type, facingLeft) {
+  const fl = facingLeft ? -1 : 1;
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (facingLeft) ctx.scale(-1, 1);
+
+  switch(type) {
+    case 'cat': {
+      // Body
+      pr(-9, -6, 18, 10, '#888888');
+      // Head
+      pr(-5, -14, 12, 10, '#888888');
+      // Ears
+      pr(-5, -18, 4, 5, '#888888');
+      pr(3,  -18, 4, 5, '#888888');
+      pr(-4, -17, 2, 3, '#ffaabb');  // inner ear L
+      pr(4,  -17, 2, 3, '#ffaabb');  // inner ear R
+      // Eyes
+      pr(-3, -11, 3, 2, '#44ff44');
+      pr(3,  -11, 3, 2, '#44ff44');
+      // Nose + mouth
+      pr(0,  -8,  2, 2, '#ffaabb');
+      // Tail
+      pr(8,  -8,  3, 12, '#888888');
+      pr(10, -12, 3, 5,  '#888888');
+      // Legs
+      pr(-8,  4,  4, 6,  '#777');
+      pr(-3,  4,  4, 6,  '#777');
+      pr(2,   4,  4, 6,  '#777');
+      pr(7,   4,  4, 6,  '#777');
+      break;
+    }
+    case 'dog': {
+      // Body
+      pr(-11, -5, 22, 11, '#CC8844');
+      // Head
+      pr(-4,  -16, 14, 13, '#CC8844');
+      // Snout
+      pr(2,   -10, 9,  7,  '#BB7733');
+      pr(6,   -8,  5,  3,  '#333');   // nose
+      // Ear (floppy)
+      pr(-5,  -16, 5, 10, '#BB7733');
+      // Eye
+      pr(0,  -13, 3, 3, '#222');
+      // Tail (up)
+      pr(10,  -12, 3, 10, '#CC8844');
+      pr(11,  -16, 4, 5,  '#CC8844');
+      // Legs
+      pr(-10,  6, 5, 7,  '#BB7733');
+      pr(-4,   6, 5, 7,  '#BB7733');
+      pr(2,    6, 5, 7,  '#BB7733');
+      pr(8,    6, 5, 7,  '#BB7733');
+      break;
+    }
+    case 'squirrel': {
+      // Body
+      pr(-6, -5, 12, 9, '#BB6622');
+      // Head
+      pr(-4, -13, 10, 9, '#BB6622');
+      // Big bushy tail
+      pr(5,  -14, 7, 18, '#CC7733');
+      pr(6,  -18, 6, 8,  '#CC7733');
+      pr(8,  -20, 5, 5,  '#DD8844');
+      // Eye
+      pr(-1, -10, 3, 3, '#222');
+      // Nose
+      pr(2,  -7,  2, 2, '#ffaabb');
+      // Ears
+      pr(-3, -17, 3, 5, '#BB6622');
+      pr(2,  -17, 3, 5, '#BB6622');
+      // Legs
+      pr(-5,  4, 4, 5, '#AA5511');
+      pr(0,   4, 4, 5, '#AA5511');
+      break;
+    }
+    case 'turtle': {
+      // Shell (dome)
+      ctx.fillStyle = '#447744';
+      ctx.beginPath();
+      ctx.ellipse(0, -3, 14, 10, 0, Math.PI, 0); ctx.fill();
+      // Shell pattern
+      ctx.strokeStyle = '#336633'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(-8,-3); ctx.lineTo(8,-3); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0,-13); ctx.lineTo(0,-3);  ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-8,-3); ctx.lineTo(0,-13); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(8,-3);  ctx.lineTo(0,-13); ctx.stroke();
+      // Body/underside
+      pr(-14, -3, 28, 7, '#336633');
+      // Head
+      pr(10, -7, 8, 6, '#336633');
+      pr(15, -9, 4, 4, '#336633');
+      pr(17, -9, 2, 2, '#fff');   // eye
+      // Legs
+      pr(-14, 2, 6, 5, '#336633');
+      pr(-6,  2, 5, 5, '#336633');
+      pr(4,   2, 5, 5, '#336633');
+      pr(10,  2, 5, 5, '#336633');
+      break;
+    }
+  }
+  ctx.restore();
+}
+
+// ─── Backgrounds ─────────────────────────────────────────────────────────────
+const SNOW_COLORS = ['#f0f4ff', '#e8eeff', '#f8fbff'];
+
+function drawWinterBackground() {
+  const bandH = 80;
+  const offset = scrollY % (bandH * SNOW_COLORS.length);
+  for (let y = -bandH + (-offset % bandH); y < H + bandH; y += bandH) {
+    const idx = Math.floor((y + offset) / bandH + 100) % SNOW_COLORS.length;
+    ctx.fillStyle = SNOW_COLORS[(idx + 3) % SNOW_COLORS.length];
+    ctx.fillRect(0, y, W, bandH);
+  }
+  // Ski tracks
+  ctx.strokeStyle = 'rgba(180,200,240,0.4)'; ctx.lineWidth = 1;
+  const toff = scrollY % 60;
+  for (let t = 0; t < 4; t++) {
+    const tx = W * 0.35 + t * 30;
+    ctx.beginPath(); ctx.setLineDash([8, 14]); ctx.lineDashOffset = -toff;
+    for (let y = 0; y < H; y += 20) {
+      ctx.moveTo(tx + Math.sin(y*0.04+t)*4, y);
+      ctx.lineTo(tx + Math.sin((y+10)*0.04+t)*4, y+20);
+    }
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+
+function drawSummerBackground() {
+  // Sky
+  ctx.fillStyle = '#87CEEB';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grass verges
+  const roadLeft  = W * 0.2;
+  const roadRight = W * 0.8;
+  ctx.fillStyle = '#5AB552';
+  ctx.fillRect(0, 0, roadLeft, H);
+  ctx.fillRect(roadRight, 0, W - roadRight, H);
+
+  // Grass stripe texture
+  ctx.fillStyle = '#4FA847';
+  for (let gy = (-scrollY * 0.4) % 30; gy < H; gy += 30) {
+    ctx.fillRect(0, gy, roadLeft, 5);
+    ctx.fillRect(roadRight, gy, W - roadRight, 5);
+  }
+
+  // Road surface
+  ctx.fillStyle = '#555566';
+  ctx.fillRect(roadLeft, 0, roadRight - roadLeft, H);
+
+  // Road texture (lighter patches)
+  ctx.fillStyle = '#5a5a6e';
+  for (let ry = (-scrollY * 0.9) % 120; ry < H; ry += 120) {
+    ctx.fillRect(roadLeft + 5, ry, (roadRight - roadLeft) - 10, 60);
+  }
+
+  // Road edge lines
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(roadLeft,  0); ctx.lineTo(roadLeft,  H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(roadRight, 0); ctx.lineTo(roadRight, H); ctx.stroke();
+
+  // Centre dashes
+  ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 2;
+  ctx.setLineDash([24, 18]); ctx.lineDashOffset = -(scrollY % 42);
+  ctx.beginPath(); ctx.moveTo(W/2, 0); ctx.lineTo(W/2, H); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// ─── Decorations render ───────────────────────────────────────────────────────
+function drawWinterDecorations() {
+  for (const d of decoLeft)  drawSnowTree(d.x, d.y, d.size);
+  for (const d of decoRight) drawSnowTree(d.x, d.y, d.size);
+  for (const f of flagPoles) drawFlag(f.x, f.y, f.color);
+}
+
+function drawSummerDecorations() {
+  for (const d of decoLeft)  drawSummerTree(d.x, d.y, d.size);
+  for (const d of decoRight) drawSummerTree(d.x, d.y, d.size);
+  // Bushes in between trees
+  for (const d of decoLeft)  drawBush(d.x + 8, d.y + d.size * 1.2, d.size * 0.5);
+  for (const d of decoRight) drawBush(d.x - 8, d.y + d.size * 1.2, d.size * 0.5);
+}
+
+function drawDecorations() {
+  if (gameMode === 'winter') drawWinterDecorations();
+  else                       drawSummerDecorations();
+}
+
+// ─── HUD ─────────────────────────────────────────────────────────────────────
+function drawHUD() {
+  ctx.fillStyle = 'rgba(0,0,30,0.55)';
+  ctx.fillRect(0, 0, W, 36);
+
+  ctx.font = 'bold 15px monospace';
+  ctx.textBaseline = 'middle';
+
+  ctx.fillStyle = '#ffee44';
+  ctx.fillText(`SCORE: ${Math.floor(score)}`, 10, 18);
+
+  ctx.fillStyle = '#aaddff';
+  const bestStr = `BEST: ${Math.floor(highScore)}`;
+  ctx.fillText(bestStr, W - ctx.measureText(bestStr).width - 10, 18);
+
+  // Mode label
+  const modeLabel = gameMode === 'winter' ? '❄ WINTER' : '☀ SUMMER';
+  ctx.fillStyle = gameMode === 'winter' ? '#aaddff' : '#ffdd88';
+  ctx.textAlign = 'center';
+  ctx.fillText(modeLabel, W/2, 18);
+  ctx.textAlign = 'left';
+
+  if (state === 'PAUSED') {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 32px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('PAUSED', W/2, H/2);
+    ctx.font = '18px monospace';
+    ctx.fillText('ESC to resume', W/2, H/2 + 40);
+    ctx.textAlign = 'left';
+  }
+}
+
+// ─── Popups ───────────────────────────────────────────────────────────────────
+function addPopup(x, y, text, color='#ffee44') {
+  popups.push({ x, y, text, color, life: 1.2, age: 0 });
+}
+function updatePopups(dt) {
+  for (const p of popups) { p.age += dt; p.y -= 30 * dt; }
+  popups = popups.filter(p => p.age < p.life);
+}
+function drawPopups() {
+  for (const p of popups) {
+    const alpha = 1 - p.age / p.life;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = 'bold 18px monospace';
+    ctx.fillStyle = p.color;
+    ctx.textAlign = 'center';
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+}
+
+// ─── Mode select screen ───────────────────────────────────────────────────────
+function drawModeSelect() {
+  // Background gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#1a2a4a');
+  grad.addColorStop(1, '#0a0a1a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Snowflakes animation
+  const t = Date.now() / 1000;
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  for (let i = 0; i < 20; i++) {
+    const sx = ((Math.sin(i*3.7)*0.5+0.5)*W + t*(8+i%5)) % W;
+    const sy = ((Math.cos(i*2.3)*0.5+0.5)*H + t*(10+i%7)) % H;
+    ctx.fillRect(sx, sy, 2, 2);
+  }
+
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 28px monospace';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('CHOOSE YOUR MODE', W/2, 70);
+  ctx.font = '14px monospace';
+  ctx.fillStyle = '#aabbcc';
+  ctx.fillText('Click a panel  ·  Key 1 for Winter  ·  Key 2 for Summer', W/2, 100);
+
+  const panelW = 190, panelH = 300, gap = 20;
+  const panelY = 130;
+  const leftX  = W/2 - panelW - gap/2;
+  const rightX = W/2 + gap/2;
+
+  // ─ Winter panel ─
+  const wHover = modeHover === 'winter';
+  ctx.fillStyle = wHover ? 'rgba(100,150,255,0.25)' : 'rgba(60,90,180,0.18)';
+  ctx.strokeStyle = wHover ? '#88aaff' : '#4466cc';
+  ctx.lineWidth = wHover ? 3 : 2;
+  roundRect(leftX, panelY, panelW, panelH, 14);
+  ctx.fill(); ctx.stroke();
+
+  // Winter preview: mini snow scene
+  ctx.save(); ctx.beginPath(); roundRect(leftX+1, panelY+1, panelW-2, panelH-2, 13); ctx.clip();
+  ctx.fillStyle = '#ddeeff'; ctx.fillRect(leftX, panelY, panelW, panelH);
+  for (let i = 0; i < 3; i++) {
+    drawSnowTree(leftX+20+i*40, panelY+panelH-60, 12+i*3);
+    drawSnowTree(leftX+panelW-20-i*40, panelY+panelH-60, 12+i*3);
+  }
+  drawSkier(leftX + panelW/2, panelY + panelH/2 - 10, 'down');
+  ctx.restore();
+
+  ctx.font = 'bold 20px monospace';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('❄ WINTER', leftX + panelW/2, panelY + panelH + 28);
+  ctx.font = '13px monospace';
+  ctx.fillStyle = '#aaddff';
+  ctx.fillText('Ski · Dodge skiers', leftX + panelW/2, panelY + panelH + 50);
+  ctx.fillText('[Key: 1 or W]', leftX + panelW/2, panelY + panelH + 68);
+
+  // ─ Summer panel ─
+  const sHover = modeHover === 'summer';
+  ctx.fillStyle = sHover ? 'rgba(255,200,50,0.22)' : 'rgba(180,130,20,0.16)';
+  ctx.strokeStyle = sHover ? '#ffdd44' : '#cc9922';
+  ctx.lineWidth = sHover ? 3 : 2;
+  roundRect(rightX, panelY, panelW, panelH, 14);
+  ctx.fill(); ctx.stroke();
+
+  // Summer preview: mini road scene
+  ctx.save(); ctx.beginPath(); roundRect(rightX+1, panelY+1, panelW-2, panelH-2, 13); ctx.clip();
+  ctx.fillStyle = '#87CEEB'; ctx.fillRect(rightX, panelY, panelW, panelH);
+  ctx.fillStyle = '#5AB552';
+  ctx.fillRect(rightX, panelY, panelW*0.2, panelH);
+  ctx.fillRect(rightX+panelW*0.8, panelY, panelW*0.2, panelH);
+  ctx.fillStyle = '#555566';
+  ctx.fillRect(rightX+panelW*0.2, panelY, panelW*0.6, panelH);
+  ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 2;
+  ctx.setLineDash([10,8]);
+  ctx.beginPath(); ctx.moveTo(rightX+panelW/2, panelY); ctx.lineTo(rightX+panelW/2, panelY+panelH); ctx.stroke();
+  ctx.setLineDash([]);
+  drawCyclist(rightX + panelW/2, panelY + panelH/2 - 10, 'forward');
+  drawAnimal(rightX + panelW/2 - 35, panelY + panelH/2 + 25, 'cat', false);
+  drawAnimal(rightX + panelW/2 + 30, panelY + panelH/2 + 20, 'turtle', true);
+  ctx.restore();
+
+  ctx.font = 'bold 20px monospace';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('☀ SUMMER', rightX + panelW/2, panelY + panelH + 28);
+  ctx.font = '13px monospace';
+  ctx.fillStyle = '#ffdd88';
+  ctx.fillText('Cycle · Dodge animals', rightX + panelW/2, panelY + panelH + 50);
+  ctx.fillText('[Key: 2 or S]', rightX + panelW/2, panelY + panelH + 68);
+
+  ctx.textAlign = 'left';
+}
+
+// Canvas hover for mode select panels
+canvas.addEventListener('mousemove', e => {
+  if (state !== 'MODE_SELECT') return;
+  const rect = canvas.getBoundingClientRect();
+  const cx = (e.clientX - rect.left) * (W / rect.width);
+  modeHover = cx < W/2 ? 'winter' : 'summer';
+});
+canvas.addEventListener('mouseleave', () => { modeHover = null; });
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y); ctx.arcTo(x+w, y, x+w, y+r, r);
+  ctx.lineTo(x+w, y+h-r); ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+  ctx.lineTo(x+r, y+h); ctx.arcTo(x, y+h, x, y+h-r, r);
+  ctx.lineTo(x, y+r); ctx.arcTo(x, y, x+r, y, r);
+  ctx.closePath();
+}
+
+// ─── Title screen ─────────────────────────────────────────────────────────────
+function drawTitle() {
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#0a1a3a');
+  grad.addColorStop(1, '#1a3a6a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Snow
+  const t = Date.now() / 1000;
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  for (let i = 0; i < 35; i++) {
+    const sx = ((Math.sin(i*3.7)*0.5+0.5)*W + t*(10+i%6)) % W;
+    const sy = ((Math.cos(i*2.3)*0.5+0.5)*H + t*(15+i%10)) % H;
+    ctx.fillRect(sx, sy, 2, 2);
+  }
+
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 54px monospace';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = '#4488ff'; ctx.shadowBlur = 22;
+  ctx.fillText('SKI & CYCLE', W/2, H*0.28);
+  ctx.shadowBlur = 0;
+
+  ctx.font = 'bold 26px monospace';
+  ctx.fillStyle = '#ffee44';
+  ctx.fillText('GAME', W/2, H*0.36);
+
+  // Demo sprites
+  drawSkier(W/2 - 50, H*0.52, 'left');
+  drawCyclist(W/2 + 50, H*0.52, 'right');
+
+  if (Math.floor(t * 2) % 2 === 0) {
+    ctx.font = 'bold 20px monospace';
+    ctx.fillStyle = '#ffee44';
+    ctx.fillText('PRESS ANY KEY TO START', W/2, H*0.72);
+  }
+
+  ctx.font = '14px monospace';
+  ctx.fillStyle = '#88aacc';
+  ctx.fillText('← → Arrow keys / A D to steer', W/2, H*0.82);
+  ctx.fillText('ESC to pause', W/2, H*0.87);
+
+  ctx.textAlign = 'left';
+}
+
+// ─── Game over ────────────────────────────────────────────────────────────────
+function drawGameOver() {
+  if (gameMode === 'winter') drawWinterBackground();
+  else drawSummerBackground();
+
+  ctx.fillStyle = 'rgba(0,0,20,0.72)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 40px monospace';
+  ctx.fillStyle = '#ff4444';
+  ctx.fillText('GAME OVER', W/2, H*0.3);
+
+  ctx.font = 'bold 24px monospace';
+  ctx.fillStyle = '#ffee44';
+  ctx.fillText(`Score: ${Math.floor(score)}`, W/2, H*0.43);
+
+  ctx.fillStyle = '#aaddff';
+  ctx.fillText(`Best:  ${Math.floor(highScore)}`, W/2, H*0.52);
+
+  if (newRecord) {
+    const bounce = Math.abs(Math.sin(Date.now()/200)) * 8;
+    ctx.font = 'bold 22px monospace';
+    ctx.fillStyle = '#ffcc00';
+    ctx.shadowColor = '#ffaa00'; ctx.shadowBlur = 12;
+    ctx.fillText('✨ NEW RECORD! ✨', W/2, H*0.62 - bounce);
+    ctx.shadowBlur = 0;
+  }
+
+  const t = Date.now()/1000;
+  if (Math.floor(t*2)%2 === 0) {
+    ctx.font = 'bold 18px monospace';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('PRESS ANY KEY TO PLAY AGAIN', W/2, H*0.78);
+  }
+  ctx.textAlign = 'left';
+}
+
+// ─── Ambulance scene ──────────────────────────────────────────────────────────
+function updateAmbulance(dt) {
+  ambTimer      += dt;
+  ambFlashTimer += dt;
+  if (ambFlashTimer > 0.3) { ambFlash = !ambFlash; ambFlashTimer = 0; }
+
+  if (ambTimer > 0.5 && ambTimer < 1.5) {
+    const target = W * 0.55;
+    ambX -= (ambX - target) * 0.08;
+    if (ambTimer > 0.8 && Math.floor(ambTimer*10)%3 === 0) playSiren();
+  }
+  if (ambTimer > 2.5) showHospital = true;
+  if (ambTimer > 2.5 && ambTimer < 3.5) ambX -= gameSpeed * 2;
+
+  if (ambTimer > 3.5) {
+    const fs = Math.floor(score);
+    if (fs > highScore) { highScore = fs; saveHS(highScore); newRecord = true; }
+    state = 'GAMEOVER';
+  }
+}
+
+function drawAmbulanceScene() {
+  if (gameMode === 'winter') drawWinterBackground();
+  else drawSummerBackground();
+  drawDecorations();
+
+  const alpha = Math.min(ambTimer / 0.5, 0.5);
+  ctx.fillStyle = `rgba(0,30,100,${alpha})`;
+  ctx.fillRect(0, 0, W, H);
+
+  if (ambTimer < 2.5) {
+    if (gameMode === 'winter') drawSkier(player.x, player.y, 'crash');
+    else                       drawCyclist(player.x, player.y, 'crash');
+  }
+  if (ambTimer > 0.5) drawAmbulance(ambX, H*0.5 - 12, ambFlash);
+  if (showHospital) {
+    drawHospital(W-70, H*0.25);
+    ctx.font = '22px monospace'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#cc2222';
+    ctx.fillText('🏥', W-50, H*0.25 - 20);
+    ctx.textAlign = 'left';
+  }
+
+  ctx.font = 'bold 18px monospace'; ctx.fillStyle = '#ffee44';
+  ctx.textAlign = 'center';
+  ctx.fillText(`Score: ${Math.floor(score)}`, W/2, 55);
+  ctx.textAlign = 'left';
+}
+
+// ─── Obstacle management ──────────────────────────────────────────────────────
+const ANIMAL_TYPES = ['cat', 'dog', 'squirrel', 'turtle'];
+const ANIMAL_SPEEDS = { cat: [0.9,1.1], dog: [0.7,1.0], squirrel: [1.2,1.5], turtle: [0.3,0.5] };
+
+function spawnObstacle() {
+  if (obstacles.length >= MAX_OBSTACLES) return;
+  if (gameMode === 'winter') {
+    obstacles.push({
+      kind: 'skier',
+      x: randRange(30, W-30),
+      y: -32,
+      speed:      randRange(0.8, 1.3) * gameSpeed,
+      driftSpeed: randRange(0.5, 1.5),
+      driftDir:   Math.random() > 0.5 ? 1 : -1,
+      driftTimer: randRange(1, 3),
+    });
+  } else {
+    const type = ANIMAL_TYPES[randInt(0, ANIMAL_TYPES.length - 1)];
+    const [sMin, sMax] = ANIMAL_SPEEDS[type];
+    obstacles.push({
+      kind:       'animal',
+      type,
+      x:          randRange(W*0.22, W*0.78),
+      y:          -32,
+      speed:      randRange(sMin, sMax) * gameSpeed,
+      driftSpeed: randRange(0.4, 1.2),
+      driftDir:   Math.random() > 0.5 ? 1 : -1,
+      driftTimer: randRange(1, 3),
+      pauseTimer: type === 'cat' ? (Math.random() > 0.5 ? randRange(0.3, 0.8) : 0) : 0,
+      pauseX:     randRange(W*0.35, W*0.65), // X position where cat pauses
+      reversals:  type === 'squirrel' ? randInt(2, 4) : 0,
+    });
+  }
+}
+
+function updateObstacles(dt) {
+  const interval = Math.max(1.2, 3 - elapsed/60);
+  obsTimer += dt;
+  if (obsTimer >= interval) { obsTimer = 0; spawnObstacle(); }
+
+  for (const o of obstacles) {
+    // Cat pause mechanic
+    if (o.kind === 'animal' && o.type === 'cat' && o.pauseTimer > 0) {
+      if (Math.abs(o.x - o.pauseX) < 5) {
+        o.pauseTimer -= dt;
+        o.y += o.speed * 0.05; // barely moves while paused
+        continue;
+      }
+    }
+    o.y += o.speed;
+    o.x += o.driftDir * o.driftSpeed;
+    o.driftTimer -= dt;
+    if (o.driftTimer <= 0) {
+      o.driftDir   = -o.driftDir;
+      o.driftTimer = randRange(1, 3);
+      // Squirrel extra reversals
+      if (o.kind === 'animal' && o.type === 'squirrel' && o.reversals > 0) {
+        o.reversals--;
+        o.driftTimer = randRange(0.2, 0.5);
+      }
+    }
+    if (o.kind === 'skier') o.speed = randRange(0.8,1.3) * gameSpeed;
+    o.x = clamp(o.x, gameMode === 'summer' ? W*0.22 : 20,
+                      gameMode === 'summer' ? W*0.78 : W-20);
+  }
+  obstacles = obstacles.filter(o => o.y < H + 50);
+}
+
+// ─── Jumper (ramp/speed bump) management ─────────────────────────────────────
+function spawnJumper() {
+  if (jumpers.length >= MAX_JUMPERS) return;
+  jumpers.push({ x: randRange(gameMode === 'summer' ? W*0.25 : 60,
+                               gameMode === 'summer' ? W*0.75 : W-60),
+                 y: -16 });
+}
+function updateJumpers(dt) {
+  jumpTimer += dt;
+  if (jumpTimer > 5) { jumpTimer = 0; spawnJumper(); }
+  for (const j of jumpers) j.y += gameSpeed;
+  jumpers = jumpers.filter(j => j.y < H + 20);
+}
+
+// ─── Rock management (summer) ─────────────────────────────────────────────────
+function spawnRock() {
+  if (rocks.length >= MAX_ROCKS) return;
+  // Enforce min X gap from existing rocks
+  const newX = randRange(W*0.25, W*0.75);
+  const tooClose = rocks.some(r => Math.abs(r.x - newX) < 40);
+  if (tooClose) return;
+  rocks.push({ x: newX, y: -20, large: Math.random() > 0.5 });
+}
+function updateRocks(dt) {
+  if (gameMode !== 'summer') return;
+  rockTimer += dt;
+  if (rockTimer > randRange(6, 10)) { rockTimer = 0; spawnRock(); }
+  for (const r of rocks) r.y += gameSpeed;
+  rocks = rocks.filter(r => r.y < H + 30);
+}
+
+// ─── Collision ────────────────────────────────────────────────────────────────
+function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by;
+}
+
+function checkCollisions() {
+  if (player.airTime > 0) return;
+  const pw = player.w * 0.8, ph = player.h * 0.8;
+  const px = player.x - pw/2, py = player.y - ph/2;
+
+  for (const o of obstacles) {
+    const ow = (o.type === 'squirrel' ? 12 : 22) * 0.8;
+    const oh = 20 * 0.8;
+    if (rectsOverlap(px, py, pw, ph, o.x-ow/2, o.y-oh/2, ow, oh)) {
+      triggerCrash(); return;
+    }
+  }
+  // Rock collision (summer)
+  for (const r of rocks) {
+    const rw = r.large ? 28 : 16, rh = r.large ? 18 : 12;
+    if (rectsOverlap(px, py, pw, ph, r.x-rw/2, r.y-rh/2, rw, rh)) {
+      triggerCrash(); return;
+    }
+  }
+}
+
+function checkJumperOverlap() {
+  const pw = player.w, ph = player.h;
+  const px = player.x - pw/2, py = player.y - ph/2;
+  for (let i = jumpers.length-1; i >= 0; i--) {
+    const j = jumpers[i];
+    if (rectsOverlap(px, py, pw, ph, j.x-16, j.y-10, 32, 20)) {
+      jumpers.splice(i, 1);
+      startJump(); return;
+    }
+  }
+}
+
+function triggerCrash() {
+  player.state = 'crash';
+  playCrash();
+  freezeTimer = 0.5;
+}
+
+function startJump() {
+  if (player.airTime > 0) return;
+  player.airTime = 0.9;
+  player.state   = 'air';
+  playJump();
+  addPopup(player.x, player.y - 20, '+500', '#ffee44');
+  score += 500;
+  const under = obstacles.filter(o =>
+    Math.abs(o.x - player.x) < 40 && o.y > player.y && o.y < player.y + 80
+  );
+  if (under.length > 0) {
+    addPopup(player.x, player.y - 50, '+200 STYLE!', '#ff88ff');
+    score += 200 * under.length;
+  }
+}
+
+// ─── Update ───────────────────────────────────────────────────────────────────
+function update(dt) {
+  if (state !== 'PLAYING') return;
+
+  if (freezeTimer > 0) {
+    freezeTimer -= dt;
+    if (freezeTimer <= 0) {
+      state = 'AMBULANCE'; ambTimer = 0; ambX = W+60; showHospital = false;
+    }
+    return;
+  }
+
+  elapsed   += dt;
+  score     += gameSpeed * dt * 10;
+  gameSpeed  = 3 + Math.floor(elapsed / 10) * 0.15;
+
+  scrollY += gameSpeed;
+  updateDeco(gameSpeed);
+
+  // Player movement
+  let moving = false;
+  if (keys.left)  { player.x = clamp(player.x - PLAYER_SPEED, 20, W-20); leanDir=-1; leanTimer=0.2; moving=true; }
+  if (keys.right) { player.x = clamp(player.x + PLAYER_SPEED, 20, W-20); leanDir= 1; leanTimer=0.2; moving=true; }
+  if (!moving) { leanTimer -= dt; if (leanTimer <= 0) leanDir = 0; }
+
+  // Summer: keep player on road
+  if (gameMode === 'summer') {
+    player.x = clamp(player.x, W*0.22, W*0.78);
+  }
+
+  // Air state
+  if (player.airTime > 0) {
+    player.airTime -= dt;
+    const prog = 1 - player.airTime / 0.9;
+    player.airY = -Math.sin(prog * Math.PI) * 30;
+    if (player.airTime <= 0) {
+      player.airTime = 0; player.airY = 0;
+      player.state = 'down'; playLand();
+    }
+  } else {
+    player.state = leanDir < 0 ? 'left' : leanDir > 0 ? 'right' : 'down';
+  }
+
+  updateObstacles(dt);
+  updateJumpers(dt);
+  updateRocks(dt);
+  checkCollisions();
+  checkJumperOverlap();
+  updatePopups(dt);
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  ctx.clearRect(0, 0, W, H);
+
+  if (state === 'TITLE')       { drawTitle(); return; }
+  if (state === 'MODE_SELECT') { drawModeSelect(); return; }
+  if (state === 'GAMEOVER')    { drawGameOver(); return; }
+  if (state === 'AMBULANCE')   { drawAmbulanceScene(); return; }
+
+  // PLAYING or PAUSED
+  if (gameMode === 'winter') drawWinterBackground();
+  else                       drawSummerBackground();
+
+  drawDecorations();
+
+  // Jumpers
+  for (const j of jumpers) {
+    if (gameMode === 'winter') drawRamp(j.x, j.y);
+    else                       drawSpeedBump(j.x, j.y);
+  }
+
+  // Rocks (summer)
+  for (const r of rocks) drawRock(r.x, r.y, r.large);
+
+  // Obstacles
+  for (const o of obstacles) {
+    if (o.kind === 'skier') drawNPCSkier(o.x, o.y, o.driftDir);
+    else                    drawAnimal(o.x, o.y, o.type, o.driftDir < 0);
+  }
+
+  // Player
+  const drawY = player.y + player.airY;
+  if (gameMode === 'winter') drawSkier(player.x, drawY, player.state);
+  else                       drawCyclist(player.x, drawY, player.state);
+
+  drawPopups();
+  drawHUD();
+}
+
+// ─── Game loop ────────────────────────────────────────────────────────────────
+function loop(now) {
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+
+  if (state === 'AMBULANCE') {
+    updateAmbulance(dt);
+    drawAmbulanceScene();
+  } else {
+    update(dt);
+    render();
+  }
+
+  requestAnimationFrame(loop);
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+initDeco();
+lastTime = performance.now();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

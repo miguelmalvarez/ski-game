@@ -148,19 +148,19 @@ Tasks are grouped by phase. Execute in order — earlier phases fix blocking bug
 
 ### Phase 3 — Controls & UX
 
-- [ ] **T09** — Add mobile pause button
+- [x] **T09** — Add mobile pause button
   - Add `<div id="btnPause">⏸</div>` inside `#wrapper`, positioned top-right
   - Style it like `.ctrl-btn` but smaller (50px) and positioned `top: max(10px, env(safe-area-inset-top))`
   - Add `touchstart` listener that calls `togglePause()`
   - File: `index.html` HTML + CSS + JS
 
-- [ ] **T10** — Control visibility tied to game state
+- [x] **T10** — Control visibility tied to game state
   - In the state transition functions (`startGame`, `triggerCrash`, `showModeSelect`, `showTitle`, `gameOver`): toggle `display` on `#controls` and `#btnPause`
   - Controls visible: `PLAYING`, `PAUSED`
   - Controls hidden: `TITLE`, `MODE_SELECT`, `AMBULANCE`, `GAMEOVER`
   - File: `index.html` JS state functions
 
-- [ ] **T11** — Improve touch feedback on control buttons
+- [x] **T11** — Improve touch feedback on control buttons
   - The `:active` CSS state works but has a small delay on iOS. Add `touchstart` visual feedback via JS: toggle a CSS class `.pressed` on `touchstart`/`touchend`/`touchcancel`
   - File: `index.html` CSS + JS
 

@@ -59,6 +59,28 @@
     transition: background 0.08s;
   }
   .ctrl-btn:active, .ctrl-btn.pressed { background: rgba(255,255,255,0.38); }
+  #btnPause {
+    position: absolute;
+    top: max(10px, env(safe-area-inset-top));
+    right: 10px;
+    width: clamp(40px, 9vw, 54px);
+    height: clamp(40px, 9vw, 54px);
+    background: rgba(255,255,255,0.18);
+    border: 2px solid rgba(255,255,255,0.35);
+    border-radius: 50%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(14px, 3.5vw, 20px);
+    color: white;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 0.08s;
+  }
+  #btnPause:active, #btnPause.pressed { background: rgba(255,255,255,0.38); }
+  /* Controls hidden by default; JS shows them only during PLAYING/PAUSED */
+  #controls { display: none; }
   /* Landscape overlay — phones only (height < 500px in landscape) */
   #landscape-msg {
     display: none;
@@ -89,6 +111,7 @@
     <div class="ctrl-btn" id="btnLeft">◀</div>
     <div class="ctrl-btn" id="btnRight">▶</div>
   </div>
+  <div id="btnPause">⏸</div>
 </div>
 <div id="landscape-msg">
   <div class="rotate-icon">&#8635;</div>
@@ -152,12 +175,29 @@ window.addEventListener('keyup', e => {
 });
 
 // Mobile controls
-document.getElementById('btnLeft').addEventListener('touchstart',  e => { e.preventDefault(); keys.left  = true;  }, { passive: false });
-document.getElementById('btnLeft').addEventListener('touchend',    e => { e.preventDefault(); keys.left  = false; }, { passive: false });
-document.getElementById('btnLeft').addEventListener('touchcancel', e => { keys.left  = false; });
-document.getElementById('btnRight').addEventListener('touchstart', e => { e.preventDefault(); keys.right = true;  }, { passive: false });
-document.getElementById('btnRight').addEventListener('touchend',   e => { e.preventDefault(); keys.right = false; }, { passive: false });
-document.getElementById('btnRight').addEventListener('touchcancel',e => { keys.right = false; });
+function addPressClass(el) {
+  el.addEventListener('touchstart',  () => el.classList.add('pressed'),    { passive: true });
+  el.addEventListener('touchend',    () => el.classList.remove('pressed'), { passive: true });
+  el.addEventListener('touchcancel', () => el.classList.remove('pressed'), { passive: true });
+}
+
+const btnLeft  = document.getElementById('btnLeft');
+const btnRight = document.getElementById('btnRight');
+const btnPause = document.getElementById('btnPause');
+
+btnLeft.addEventListener('touchstart',  e => { e.preventDefault(); keys.left  = true;  }, { passive: false });
+btnLeft.addEventListener('touchend',    e => { e.preventDefault(); keys.left  = false; }, { passive: false });
+btnLeft.addEventListener('touchcancel', e => { keys.left  = false; });
+btnRight.addEventListener('touchstart', e => { e.preventDefault(); keys.right = true;  }, { passive: false });
+btnRight.addEventListener('touchend',   e => { e.preventDefault(); keys.right = false; }, { passive: false });
+btnRight.addEventListener('touchcancel',e => { keys.right = false; });
+
+btnPause.addEventListener('touchstart', e => { e.preventDefault(); togglePause(); }, { passive: false });
+btnPause.addEventListener('click', () => togglePause());
+
+addPressClass(btnLeft);
+addPressClass(btnRight);
+addPressClass(btnPause);
 
 // Canvas click for mode select
 canvas.addEventListener('click', e => {
@@ -284,18 +324,27 @@ function randInt(a, b)   { return Math.floor(randRange(a, b + 1)); }
 function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
 
 // ─── State transitions ───────────────────────────────────────────────────────
-function showModeSelect() { state = 'MODE_SELECT'; }
+function syncControls() {
+  const playing = state === 'PLAYING' || state === 'PAUSED';
+  document.getElementById('controls').style.display = playing ? 'flex' : 'none';
+  document.getElementById('btnPause').style.display  = playing ? 'flex' : 'none';
+  document.getElementById('btnPause').textContent    = state === 'PAUSED' ? '▶' : '⏸';
+}
+
+function showModeSelect() { state = 'MODE_SELECT'; syncControls(); }
 
 function chooseMode(mode) {
   gameMode  = mode;
   highScore = getHS();
   resetGame();
   state = 'PLAYING';
+  syncControls();
 }
 
 function togglePause() {
-  if (state === 'PLAYING')  { state = 'PAUSED'; }
+  if (state === 'PLAYING')     { state = 'PAUSED'; }
   else if (state === 'PAUSED') { state = 'PLAYING'; lastTime = performance.now(); }
+  syncControls();
 }
 
 // ─── Game reset ───────────────────────────────────────────────────────────────
@@ -1096,7 +1145,7 @@ function updateAmbulance(dt) {
   if (ambTimer > 3.5) {
     const fs = Math.floor(score);
     if (fs > highScore) { highScore = fs; saveHS(highScore); newRecord = true; }
-    state = 'GAMEOVER';
+    state = 'GAMEOVER'; syncControls();
   }
 }
 
@@ -1294,7 +1343,7 @@ function update(dt) {
   if (freezeTimer > 0) {
     freezeTimer -= dt;
     if (freezeTimer <= 0) {
-      state = 'AMBULANCE'; ambTimer = 0; ambX = W+60; showHospital = false;
+      state = 'AMBULANCE'; ambTimer = 0; ambX = W+60; showHospital = false; syncControls();
     }
     return;
   }

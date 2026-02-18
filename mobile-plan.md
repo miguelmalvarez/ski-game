@@ -125,20 +125,20 @@ Tasks are grouped by phase. Execute in order — earlier phases fix blocking bug
 
 ### Phase 2 — Layout & Safe Areas
 
-- [ ] **T05** — Apply safe-area insets to bottom controls
+- [x] **T05** — Apply safe-area insets to bottom controls
   - Change `#controls { bottom: 20px }` to `bottom: max(20px, env(safe-area-inset-bottom))`
   - File: `index.html` ~line 33
 
-- [ ] **T06** — Add safe-area padding to body (top/sides for notch)
+- [x] **T06** — Add safe-area padding to body (top/sides for notch)
   - Add `padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left)` to `body`
   - File: `index.html` CSS block
 
-- [ ] **T07** — Scale control buttons with viewport
+- [x] **T07** — Scale control buttons with viewport
   - Replace fixed `70px` width/height with `clamp(64px, 14vw, 90px)`
   - Adjust `font-size` to scale proportionally: `clamp(22px, 5vw, 32px)`
   - File: `index.html` `.ctrl-btn` CSS rule (~lines 41-55)
 
-- [ ] **T08** — Add landscape orientation overlay
+- [x] **T08** — Add landscape orientation overlay
   - Add CSS: a `#landscape-msg` overlay div that shows only when `orientation: landscape`
   - Add HTML: a styled overlay with "Please rotate your device" message
   - Handle resize event in JS to also toggle it (for split-screen on tablets)

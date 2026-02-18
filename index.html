@@ -217,10 +217,10 @@ canvas.addEventListener('click', e => {
   else             chooseMode('summer');
 });
 canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
   if (state === 'TITLE')    { showModeSelect(); return; }
   if (state === 'GAMEOVER') { showModeSelect(); return; }
   if (state !== 'MODE_SELECT') return;
-  e.preventDefault();
   const rect  = canvas.getBoundingClientRect();
   const scaleX = W / rect.width;
   const cx    = (e.touches[0].clientX - rect.left) * scaleX;

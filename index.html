@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>SKI &amp; CYCLE GAME</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -13,6 +13,7 @@
     align-items: center;
     justify-content: center;
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
     touch-action: none;
     font-family: monospace;
@@ -123,8 +124,10 @@ window.addEventListener('keyup', e => {
 // Mobile controls
 document.getElementById('btnLeft').addEventListener('touchstart',  e => { e.preventDefault(); keys.left  = true;  }, { passive: false });
 document.getElementById('btnLeft').addEventListener('touchend',    e => { e.preventDefault(); keys.left  = false; }, { passive: false });
+document.getElementById('btnLeft').addEventListener('touchcancel', e => { keys.left  = false; });
 document.getElementById('btnRight').addEventListener('touchstart', e => { e.preventDefault(); keys.right = true;  }, { passive: false });
 document.getElementById('btnRight').addEventListener('touchend',   e => { e.preventDefault(); keys.right = false; }, { passive: false });
+document.getElementById('btnRight').addEventListener('touchcancel',e => { keys.right = false; });
 
 // Canvas click for mode select
 canvas.addEventListener('click', e => {
@@ -197,6 +200,12 @@ function playSiren() {
     setTimeout(() => playTone(600, 'square', 0.35, 0.12), (delay + 0.2) * 1000);
   });
 }
+
+// iOS AudioContext unlock — must call resume() after a user gesture
+document.addEventListener('touchstart', function unlockAudio() {
+  const ac = getAudio();
+  if (ac && ac.state === 'suspended') ac.resume();
+}, { once: true });
 
 // ─── Game state ───────────────────────────────────────────────────────────────
 let state    = 'TITLE';  // TITLE | MODE_SELECT | PLAYING | PAUSED | AMBULANCE | GAMEOVER

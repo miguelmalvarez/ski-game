@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#111111"/>
+  <!-- Snow slope bands -->
+  <rect x="0" y="320" width="512" height="192" rx="0" fill="#cce8ff"/>
+  <rect x="0" y="380" width="512" height="132" fill="#dff0ff"/>
+  <!-- Skier (pixel-art style) -->
+  <!-- head -->
+  <rect x="220" y="130" width="72" height="72" rx="36" fill="#f5c5a0"/>
+  <!-- goggles -->
+  <rect x="224" y="152" width="64" height="22" rx="6" fill="#c44"/>
+  <!-- body -->
+  <rect x="210" y="202" width="92" height="80" rx="8" fill="#c44"/>
+  <!-- left ski -->
+  <rect x="170" y="275" width="120" height="14" rx="7" fill="#555"/>
+  <!-- right ski -->
+  <rect x="200" y="291" width="140" height="14" rx="7" fill="#333"/>
+  <!-- poles -->
+  <rect x="188" y="228" width="8" height="80" rx="4" fill="#888"/>
+  <rect x="316" y="228" width="8" height="80" rx="4" fill="#888"/>
+  <!-- snowflakes -->
+  <circle cx="80"  cy="80"  r="8" fill="#fff" opacity="0.6"/>
+  <circle cx="150" cy="40"  r="5" fill="#fff" opacity="0.5"/>
+  <circle cx="400" cy="60"  r="7" fill="#fff" opacity="0.6"/>
+  <circle cx="440" cy="110" r="4" fill="#fff" opacity="0.5"/>
+</svg>

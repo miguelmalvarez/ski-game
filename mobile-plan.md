@@ -177,19 +177,19 @@ Tasks are grouped by phase. Execute in order — earlier phases fix blocking bug
 
 ### Phase 5 — PWA & Platform Polish
 
-- [ ] **T13** — Add iOS PWA meta tags
+- [x] **T13** — Add iOS PWA meta tags
   - Add to `<head>`:
     - `<meta name="apple-mobile-web-app-capable" content="yes">`
     - `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`
     - `<meta name="theme-color" content="#111111">`
   - File: `index.html` head block
 
-- [ ] **T14** — Add Web App Manifest
+- [x] **T14** — Add Web App Manifest
   - Create `manifest.json` with name, icons, display: standalone, orientation: portrait
   - Add `<link rel="manifest" href="manifest.json">` to `<head>`
   - Files: new `manifest.json` + `index.html` head
 
-- [ ] **T15** — Add haptic feedback on crash
+- [x] **T15** — Add haptic feedback on crash
   - In `triggerCrash()`: call `navigator.vibrate?.([50, 30, 80])`
   - File: `index.html` ~crash trigger function
 

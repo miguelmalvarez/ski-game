@@ -135,7 +135,7 @@ const MAX_FLAGS      = 20;
 // ─── Canvas setup ────────────────────────────────────────────────────────────
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
-const dpr    = window.devicePixelRatio || 1;
+const dpr    = Math.min(window.devicePixelRatio || 1, 2);
 
 function resizeCanvas() {
   const vw = window.innerWidth, vh = window.innerHeight;

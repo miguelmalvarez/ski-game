@@ -168,7 +168,7 @@ Tasks are grouped by phase. Execute in order — earlier phases fix blocking bug
 
 ### Phase 4 — Performance
 
-- [ ] **T12** — Cap devicePixelRatio at 2
+- [x] **T12** — Cap devicePixelRatio at 2
   - Change `const dpr = window.devicePixelRatio || 1`
   - To: `const dpr = Math.min(window.devicePixelRatio || 1, 2)`
   - File: `index.html` line 84
